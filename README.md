@@ -59,6 +59,12 @@ Then open http://localhost:3000
   - `tower/<id>/event/call` `{ input, state }`
   - (add your own publishes as needed)
 
+## Generic client sender (non-Pi)
+- File: `client-sender.js`
+- Install: `npm install mqtt`
+- Run: `MQTT_URL=mqtt://2.245.63.236 TOWER_ID="PERTH PR1001" node client-sender.js`
+- Sends the same topics the server expects (status/io/call) so the dashboard updates for that tower ID.
+
 ## Notes
 - Simulator is on by default and periodically triggers calls and output toggles so the UI has activity without MQTT.
 - CCTV uses the demo YouTube embed; swap `DEMO_CCTV_EMBED_URL` in `public/index.html` with your stream gateway when ready.
