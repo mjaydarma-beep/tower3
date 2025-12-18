@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Beach Guard Towers AU (Live MQTT + WebSocket)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Leaflet (Free Map / OpenStreetMap) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        :root {
+            --bg: #020617;
+            --bg2: #02081a;
+            --border: #111827;
+            --accent: #22c55e;
+            --accent2: rgba(34,197,94,.15);
+            --danger: #ef4444;
+            --danger2: rgba(239,68,68,.15);
+            --amber: #ffb000;
+            --amber2: rgba(255,176,0,.15);
+            --text: #e5e7eb;
+            --muted: #9ca3af;
+            --muted2: #6b7280;
+        }
+
+        * { box-sizing: border-box }
+        body {
+            margin: 0;
+            font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+            background: radial-gradient(circle at top,#0f172a,#020617 50%,#000);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column
+        }
+        /* Topbar */
+        .topbar {
+            height: 56px;
+            padding: 0 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #020617;
+            border-bottom: 1px solid var(--border)
+        }
+        .topbar-left { display: flex; align-items: center; gap: 10px }
+        .logo {
+            width: 28px; height: 28px; border-radius: 9px;
+            background: radial-gradient(circle at 30% 0,#22c55e,#16a34a 50%,#052e16);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; color: #022c22
+        }
+        .title { font-size: 16px; font-weight: 700 }
+        .subtitle { font-size: 12px; color: var(--muted2) }
+        .pill {
+            padding: 3px 10px; border-radius: 999px;
+            border: 1px solid rgba(45,212,191,.5);
+            background: rgba(8,47,73,.6); color: #a5f3fc;
+            font-size: 11px; display: inline-flex; gap: 6px; align-items: center
+        }
+        .pill-dot { width: 7px; height: 7px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 10px rgba(22,163,74,.9) }
+        .shell { flex: 1; display: flex; overflow: hidden }
+        /* Sidebar */
+        .sidebar {
+            width: 340px; border-right: 1px solid var(--border);
+            background: #020617; padding: 12px;
+            display: flex; flex-direction: column; gap: 10px
+        }
+        .label {
+            font-size: 12px; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--muted2); margin-bottom: 4px
+        }
+        .stats { display: flex; gap: 8px }
+        .stat {
+            flex: 1; border: 1px solid var(--border); border-radius: 10px;
+            padding: 8px; background: #020617; font-size: 11px
+        }
+        .stat .k { color: var(--muted) }
+        .stat .v { margin-top: 2px; font-weight: 800 }
+        .search {
+            width: 100%; padding: 8px 10px; border-radius: 10px;
+            border: 1px solid var(--border); background: var(--bg2);
+            color: var(--text); font-size: 12px
+        }
+        .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px }
+        .chip {
+            border-radius: 999px; border: 1px solid #1f2937;
+            padding: 3px 8px; background: #020617; color: var(--muted);
+            font-size: 11px; cursor: pointer
+        }
+        .chip.active { border-color: var(--accent); background: var(--accent2); color: #bbf7d0 }
+        .list { flex: 1; overflow: auto; padding-right: 4px }
+        .group { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted2) }
+        .item {
+            padding: 9px; border-radius: 10px; margin-bottom: 5px;
+            background: #020617; border: 1px solid transparent; cursor: pointer;
+            display: flex; justify-content: space-between; gap: 10px
+        }
+        .item:hover { background: #02081a; border-color: #374151 }
+        .item.active { border-color: var(--accent); background: #052e16 }
+        .meta { font-size: 11px; color: var(--muted) }
+        .dot { width: 8px; height: 8px; border-radius: 999px; margin-top: 3px }
+        .dot.on { background: var(--accent); box-shadow: 0 0 8px rgba(34,197,94,.9) }
+        .dot.off { background: #4b5563 }
+        .dot.alarm { background: #ef4444; box-shadow: 0 0 10px rgba(239,68,68,.9) }
+        /* Main */
+        .main { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; overflow: hidden }
+        .head { display: flex; justify-content: space-between; align-items: baseline }
+        .h1 { font-size: 18px; font-weight: 800 }
+        .h2 { font-size: 12px; color: var(--muted) }
+        .crumb { font-size: 11px; color: var(--muted2) }
+        .mapcard {
+            border: 1px solid var(--border); border-radius: 12px;
+            background: #020617; padding: 10px; box-shadow: 0 14px 40px rgba(15,23,42,.8)
+        }
+        #map { width: 100%; height: 46vh; border-radius: 10px; overflow: hidden }
+        .grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1.1fr); gap: 10px }
+        .card {
+            border: 1px solid var(--border); border-radius: 12px;
+            background: #020617; padding: 10px;
+            display: flex; flex-direction: column; min-height: 0
+        }
+        .ctitle { font-size: 13px; font-weight: 700; margin-bottom: 4px }
+        .csub { font-size: 11px; color: var(--muted); margin-bottom: 8px }
+        .logs { flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: 10px; padding: 8px; overflow: auto; background: #020617; font-size: 11px }
+        .log { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dashed #111827 }
+        .log:last-child { border-bottom: none }
+        .t { color: var(--muted2) }
+        .m { color: var(--muted); text-align: right }
+        .rowbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px }
+        .btn {
+            border-radius: 999px; border: 1px solid #4b5563;
+            background: #020617; color: #e5e7eb;
+            padding: 8px 12px; font-size: 12px; cursor: pointer; user-select: none
+        }
+        .btn.primary { border-color: transparent; background: linear-gradient(135deg,#22c55e,#16a34a); color: #022c22; font-weight: 900 }
+        .btn.danger { border-color: transparent; background: linear-gradient(135deg,#ef4444,#b91c1c); color: #fee2e2; font-weight: 900 }
+        /* Popup */
+        .tower-popup { font-size: 11px; color: #e5e7eb; min-width: 300px }
+        .tower-popup-header { font-weight: 900; margin-bottom: 2px }
+        .tower-popup-sub { color: #9ca3af; margin-bottom: 6px }
+        .tower-popup-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px }
+        .tower-popup-label { color: #9ca3af }
+        .signal-bars { display: inline-flex; gap: 2px }
+        .signal-bar { width: 3px; height: 8px; border-radius: 999px; background: #4b5563 }
+        .signal-bar.active { background: #22c55e }
+        .tower-popup-buttons { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap }
+        .tower-popup-btn {
+            border-radius: 999px; border: 1px solid #4b5563;
+            background: #020617; color: #e5e7eb;
+            padding: 4px 7px; font-size: 10px; cursor: pointer; user-select: none
+        }
+        .tower-popup-btn.primary { border-color: transparent; background: linear-gradient(135deg,#22c55e,#16a34a); color: #022c22; font-weight: 900 }
+        .tower-popup-btn.danger { border-color: transparent; background: linear-gradient(135deg,#ef4444,#b91c1c); color: #fee2e2; font-weight: 900 }
+        .popup-io { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #111827 }
+        .popup-grid3 { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; margin-top: 4px }
+        .mini-badge {
+            font-size: 10px; border-radius: 999px; padding: 2px 6px; display: inline-block;
+            border: 1px solid #4b5563; color: #9ca3af
+        }
+        .mini-badge.alarm { border-color: #ef4444; background: rgba(239,68,68,.18); color: #fecaca }
+        .mini-badge.warn { border-color: var(--amber); background: var(--amber2); color: #ffe7b3 }
+        /* CCTV preview in popup */
+        .preview-wrap { margin-top: 10px }
+        .preview-box { border: 1px solid #111827; border-radius: 10px; overflow: hidden; background: #000 }
+        .preview-iframe { width: 100%; height: 135px; border: 0; display: block; background: #000 }
+        /* LED preview */
+        .led-wrap { margin-top: 10px }
+        .led-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
+        .led-sel, .led-inp {
+            border: 1px solid var(--border); background: var(--bg2);
+            color: var(--text); border-radius: 10px; padding: 6px 8px; font-size: 11px
+        }
+        .led-inp { flex: 1; min-width: 140px }
+        .led-canvas {
+            width: 300px; height: 100px; border: 1px solid #111827;
+            border-radius: 10px; background: #000; image-rendering: pixelated; display: block;
+        }
+        /* FULLSCREEN CONTROL OVERLAY */
+        .overlay { display: none; position: fixed; inset: 0; z-index: 999999; background: rgba(0,0,0,.75); backdrop-filter: blur(6px) }
+        .overlay.open { display: block }
+        .panel {
+            position: absolute; inset: 14px; border: 1px solid var(--border); border-radius: 16px;
+            overflow: hidden; background: linear-gradient(180deg,#020617,#000);
+            display: flex; flex-direction: column; box-shadow: 0 30px 90px rgba(0,0,0,.8)
+        }
+        .bar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 12px; background: rgba(2,6,23,.85); border-bottom: 1px solid var(--border)
+        }
+        .bar .left { display: flex; flex-direction: column }
+        .bar .name { font-weight: 900 }
+        .bar .sub { font-size: 12px; color: var(--muted) }
+        .close {
+            border-radius: 999px; border: 1px solid #374151; background: #020617;
+            color: #e5e7eb; padding: 6px 10px; cursor: pointer
+        }
+        .content { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0,1.7fr) minmax(0,1fr); gap: 10px; padding: 10px }
+        .video {
+            border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: #000;
+            display: flex; flex-direction: column; min-height: 0
+        }
+        .videohead { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); background: rgba(2,6,23,.7) }
+        .frame { flex: 1; min-height: 0 }
+        .frame iframe { width: 100%; height: 100%; border: 0; display: block; background: #000 }
+        .right {
+            border: 1px solid var(--border); border-radius: 14px; background: rgba(2,6,23,.6);
+            padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto
+        }
+        .row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted) }
+        .bars2 { display: inline-flex; gap: 2px; align-items: flex-end }
+        .sb { width: 4px; height: 10px; border-radius: 999px; background: #4b5563 }
+        .sb.on { background: var(--accent) }
+        .cta { display: flex; gap: 8px; flex-wrap: wrap }
+        .ctabtn {
+            border-radius: 999px; border: 1px solid #4b5563; background: #020617; color: #e5e7eb;
+            padding: 8px 12px; font-size: 12px; cursor: pointer; user-select: none
+        }
+        .ctabtn.primary { border-color: transparent; background: linear-gradient(135deg,#22c55e,#16a34a); color: #022c22; font-weight: 900 }
+        .ctabtn.danger { border-color: transparent; background: linear-gradient(135deg,#ef4444,#b91c1c); color: #fee2e2; font-weight: 900 }
+        .mini { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px }
+        .box { border: 1px solid var(--border); border-radius: 12px; padding: 8px; background: rgba(2,6,23,.65) }
+        .box .k { font-size: 11px; color: var(--muted) }
+        .box .v { font-size: 13px; font-weight: 900; margin-top: 2px }
+        .box .v.alarm { color: #fecaca }
+        .smallbtn {
+            margin-top: 6px; width: 100%;
+            border-radius: 999px; border: 1px solid #4b5563;
+            background: #020617; color: #e5e7eb;
+            padding: 7px 10px; font-size: 11px; cursor: pointer
+        }
+        .hint { margin-top: auto; font-size: 11px; color: var(--muted2) }
+        .fs-led { border: 1px solid var(--border); border-radius: 14px; background: rgba(2,6,23,.65); padding: 10px; }
+        .fs-led h4 { margin: 0 0 6px 0; font-size: 12px; color: var(--muted); font-weight: 700 }
+        .fs-led canvas {
+            width: 100%; height: 140px; border: 1px solid #111827; border-radius: 12px;
+            background: #000; image-rendering: pixelated; display: block
+        }
+        @media (max-width:1024px) {
+            .sidebar { display: none }
+            #map { height: 50vh }
+            .grid { grid-template-columns: 1fr }
+            .content { grid-template-columns: 1fr }
+            .panel { inset: 10px }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <div class="logo">GT</div>
+            <div>
+                <div class="title">Beach Guard Tower Network</div>
+                <div class="subtitle">MQTT + WebSocket + LED preview + Group broadcast</div>
+            </div>
+        </div>
+        <span class="pill"><span class="pill-dot"></span> Live prototype (Node + MQTT)</span>
+    </header>
+
+    <div class="shell">
+        <aside class="sidebar">
+            <div>
+                <div class="label">Fleet Overview</div>
+                <div class="stats">
+                    <div class="stat"><div class="k">Online</div><div class="v" id="statOnline">0</div></div>
+                    <div class="stat"><div class="k">Offline</div><div class="v" id="statOffline">0</div></div>
+                    <div class="stat"><div class="k">Alarms</div><div class="v" id="statAlarms">0</div></div>
+                </div>
+            </div>
+
+            <div>
+                <div class="label">Search</div>
+                <input id="search" class="search" placeholder="Search PR1001 / PERTH / Fremantle..." />
+                <div id="chips" class="chips"></div>
+            </div>
+
+            <div>
+                <div class="label">Tower List</div>
+                <div id="list" class="list"></div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <div class="head">
+                <div>
+                    <div id="selTitle" class="h1">Loading towers…</div>
+                    <div id="selSub" class="h2">Waiting for server.</div>
+                </div>
+                <div id="crumb" class="crumb">Australia  Overview</div>
+            </div>
+
+            <section class="mapcard">
+                <div class="ctitle">Australia Map</div>
+                <div class="csub">Popup: CCTV + IO + LED preview + group broadcast. Fullscreen: large CCTV and controls.</div>
+                <div id="map"></div>
+            </section>
+
+            <div class="grid">
+                <section class="card">
+                    <div class="ctitle">Events</div>
+                    <div class="csub">Live logs from server (MQTT + simulator)</div>
+                    <div id="logs" class="logs"></div>
+
+                    <div class="rowbtns">
+                        <button class="btn" id="demoCall">🔔 Demo: Trigger Random Call (Input1)</button>
+                        <button class="btn primary" id="openFsSel">🖥 Open Fullscreen (Selected)</button>
+                        <button class="btn" id="demoGroupClosed">📣 Demo: Group BEACH CLOSED (PERTH)</button>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="ctitle">Quick Help</div>
+                    <div class="csub">How LED + Groups behave (live prototype logic)</div>
+                    <div style="color:var(--muted);font-size:12px;line-height:1.55">
+                        - Each tower has LED state: <b>TIME</b> (default), or presets, or text.<br />
+                        - Send to group updates multiple towers (region/all).<br />
+                        - Actions post to Node backend; backend can publish MQTT to devices/groups.<br />
+                        - CCTV uses your demo embed: <b>rtsp.me</b> (replace with MediaMTX WebRTC/HLS later).
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+  // ===== CCTV demo embed (replace with your WebRTC/HLS gateway later) =====
+  const DEMO_CCTV_EMBED_URL = "https://www.youtube.com/embed/Bv6pTaelhyk";
+  function towerCctvUrl(tower){ return DEMO_CCTV_EMBED_URL; }
+
+  // ===== LED matrix preview target size =====
+  const LED_W = 192;
+  const LED_H = 64;
+
+  // ===== State (from backend) =====
+  let regions = [];
+  let towers = [];
+  const towerById = new Map();
+  let currentRegion = "ALL";
+  let selected = null;
+  let logs = [];
+
+  // Map
+  let map;
+  const markerById = new Map();
+  let selectedMarkerId = null;
+
+  // DOM refs
+  const statOnline = document.getElementById("statOnline");
+  const statOffline = document.getElementById("statOffline");
+  const statAlarms = document.getElementById("statAlarms");
+  const search = document.getElementById("search");
+  const chips = document.getElementById("chips");
+  const list = document.getElementById("list");
+  const selTitle = document.getElementById("selTitle");
+  const selSub = document.getElementById("selSub");
+  const crumb = document.getElementById("crumb");
+  const logsEl = document.getElementById("logs");
+  const demoCall = document.getElementById("demoCall");
+  const openFsSel = document.getElementById("openFsSel");
+  const demoGroupClosed = document.getElementById("demoGroupClosed");
+
+  // Overlay refs
+  const overlay = document.getElementById("overlay");
+  const closeOverlay = document.getElementById("closeOverlay");
+  const ovTitle = document.getElementById("ovTitle");
+  const ovSub = document.getElementById("ovSub");
+  const ovFrame = document.getElementById("ovFrame");
+  const ovOnline = document.getElementById("ovOnline");
+  const ovSignal = document.getElementById("ovSignal");
+  const ovOpenCctv = document.getElementById("ovOpenCctv");
+  const ovPtt = document.getElementById("ovPtt");
+  const ovOut1 = document.getElementById("ovOut1");
+  const ovOut2 = document.getElementById("ovOut2");
+  const ovOut3 = document.getElementById("ovOut3");
+  const ovT1 = document.getElementById("ovT1");
+  const ovT2 = document.getElementById("ovT2");
+  const ovT3 = document.getElementById("ovT3");
+  const ovIn1 = document.getElementById("ovIn1");
+  const ovIn2 = document.getElementById("ovIn2");
+  const ovIn3 = document.getElementById("ovIn3");
+  const ovLedCanvas = document.getElementById("ovLedCanvas");
+  const ovLedShark = document.getElementById("ovLedShark");
+  const ovLedClosed = document.getElementById("ovLedClosed");
+  const ovLedOpen = document.getElementById("ovLedOpen");
+  const ovLedTime = document.getElementById("ovLedTime");
+  const ovLedText = document.getElementById("ovLedText");
+  const ovLedTarget = document.getElementById("ovLedTarget");
+  const ovLedSendText = document.getElementById("ovLedSendText");
+
+  // ===== Helpers =====
+  function addLog(type,msg){
+    const ts = new Date().toTimeString().slice(0,8);
+    logs.unshift({ts,type,msg});
+    if (logs.length>200) logs.pop();
+    logsEl.innerHTML = logs.map(x=>`<div class="log"><span class="t">${x.ts}</span><span class="m">${x.type}: ${x.msg}</span></div>`).join("");
+  }
+
+  function setStats(stats){
+    statOnline.textContent = stats.online ?? 0;
+    statOffline.textContent = stats.offline ?? 0;
+    statAlarms.textContent = stats.alarms ?? 0;
+  }
+
+  function ledNowTimeString(){
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    return `${hh}:${mm}`;
+  }
+
+  function ledColorForMode(led){
+    if (!led) return "#00ff50";
+    if (led.mode === "preset"){
+      if (led.preset === "SHARK_ATTACK") return "#ff2a2a";
+      if (led.preset === "BEACH_CLOSED") return "#ffb000";
+      if (led.preset === "BEACH_OPEN") return "#00ff50";
+    }
+    if (led.mode === "text") return "#00ff50";
+    return "#00ff50";
+  }
+
+  function drawLedPreview(canvas, led){
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0,0,w,h);
+
+    let text = "";
+    if (!led) led = {mode:"time"};
+
+    if (led.mode === "time"){
+      text = ledNowTimeString();
+    } else if (led.mode === "preset"){
+      if (led.preset === "SHARK_ATTACK") text = "SHARK ATTACK";
+      else if (led.preset === "BEACH_CLOSED") text = "BEACH CLOSED";
+      else if (led.preset === "BEACH_OPEN") text = "BEACH OPEN";
+      else text = "PRESET";
+    } else if (led.mode === "text"){
+      text = (led.text || "").toUpperCase() || "MESSAGE";
+    } else {
+      text = "";
+    }
+
+    const col = ledColorForMode(led);
+    if (led.mode === "preset" && (led.preset === "SHARK_ATTACK" || led.preset === "BEACH_CLOSED")){
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1,1,w-2,h-2);
+    }
+
+    ctx.fillStyle = col;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    if (text.includes(":")){
+      ctx.font = "bold 46px monospace";
+      ctx.fillText(text, w/2, h/2 + 2);
+    } else {
+      const words = text.split(" ");
+      const line1 = words.slice(0, Math.ceil(words.length/2)).join(" ");
+      const line2 = words.slice(Math.ceil(words.length/2)).join(" ");
+      ctx.font = "bold 22px monospace";
+      if (line2 && (line1.length + line2.length) > 10){
+        ctx.fillText(line1, w/2, h/2 - 12);
+        ctx.fillText(line2, w/2, h/2 + 14);
+      } else {
+        ctx.fillText(text.slice(0,18), w/2, h/2);
+      }
+    }
+  }
+
+  function markerStyle(t, isSelected){
+    const call = t.inputs[0]===1;
+    return {
+      radius: isSelected ? 9 : (call ? 7 : 4),
+      weight: isSelected ? 2 : (call ? 2 : 1),
+      color: call ? "#ef4444" : (isSelected ? "#ffffff" : "#bbf7d0"),
+      fillColor: call ? "#ef4444" : (t.online ? "#22c55e" : "#4b5563"),
+      fillOpacity: 1
+    };
+  }
+
+  function highlightOnMap(id){
+    if (selectedMarkerId && markerById.has(selectedMarkerId)){
+      const prevT = towerById.get(selectedMarkerId);
+      const prevM = markerById.get(selectedMarkerId);
+      if (prevT && prevM) prevM.setStyle(markerStyle(prevT,false));
+    }
+    selectedMarkerId = id;
+    const t = towerById.get(id);
+    const m = markerById.get(id);
+    if (t && m) m.setStyle(markerStyle(t,true));
+  }
+
+  function miniBadge(v){ return v ? `<span class="mini-badge alarm">Triggered</span>` : `<span class="mini-badge">Normal</span>`; }
+
+  function buildPopupHtml(t){
+    const bars = Array.from({length:5},(_,i)=>`<span class="signal-bar${i<t.signal?" active":""}"></span>`).join("");
+    const previewUrl = towerCctvUrl(t);
+
+    let ledLabel = "TIME";
+    if (t.led?.mode === "preset") ledLabel = t.led.preset.replaceAll("_"," ");
+    if (t.led?.mode === "text") ledLabel = "TEXT";
+    const ledBadge = (t.led?.mode === "preset" && t.led?.preset === "SHARK_ATTACK")
+      ? `<span class="mini-badge alarm">${ledLabel}</span>`
+      : (t.led?.mode === "preset" && t.led?.preset === "BEACH_CLOSED")
+        ? `<span class="mini-badge warn">${ledLabel}</span>`
+        : `<span class="mini-badge">${ledLabel}</span>`;
+
+    return `
+      <div class="tower-popup">
+        <div class="tower-popup-header">${t.id}</div>
+        <div class="tower-popup-sub">${t.site}</div>
+
+        <div class="tower-popup-row">
+          <span class="tower-popup-label">Signal</span>
+          <span class="signal-bars">${bars}</span>
+        </div>
+        <div class="tower-popup-row">
+          <span class="tower-popup-label">Status</span>
+          <span>${t.online ? "Online" : "Offline"}</span>
+        </div>
+
+        <div class="tower-popup-buttons">
+          <button class="tower-popup-btn primary" data-action="fullscreen" data-id="${t.id}">🖥 Fullscreen</button>
+          <button class="tower-popup-btn" data-action="cctv" data-id="${t.id}">📺 Open CCTV</button>
+          <button class="tower-popup-btn danger" data-action="ptt" data-id="${t.id}">🎙 Press & Hold</button>
+        </div>
+
+        <div class="preview-wrap">
+          <div style="font-weight:800;margin-bottom:4px;">CCTV Preview</div>
+          <div class="preview-box">
+            <iframe class="preview-iframe" src="${previewUrl}" allow="autoplay; fullscreen"></iframe>
+          </div>
+        </div>
+
+        <div class="popup-io">
+          <div style="font-weight:800;margin-bottom:4px;">Outputs</div>
+          <div class="popup-grid3">
+            <button class="tower-popup-btn" data-action="out" data-out="0" data-id="${t.id}">OUT1: ${t.outputs[0]?"ON":"OFF"}</button>
+            <button class="tower-popup-btn" data-action="out" data-out="1" data-id="${t.id}">OUT2: ${t.outputs[1]?"ON":"OFF"}</button>
+            <button class="tower-popup-btn" data-action="out" data-out="2" data-id="${t.id}">OUT3: ${t.outputs[2]?"ON":"OFF"}</button>
+          </div>
+
+          <div style="font-weight:800;margin-top:8px;margin-bottom:4px;">Inputs</div>
+          <div class="tower-popup-row"><span class="tower-popup-label">Input 1 (Call)</span>${miniBadge(t.inputs[0])}</div>
+          <div class="tower-popup-row"><span class="tower-popup-label">Input 2</span>${miniBadge(t.inputs[1])}</div>
+          <div class="tower-popup-row"><span class="tower-popup-label">Input 3</span>${miniBadge(t.inputs[2])}</div>
+        </div>
+
+        <div class="led-wrap">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-weight:800">LED Matrix</div>
+            ${ledBadge}
+          </div>
+
+          <canvas class="led-canvas" id="ledCanvas_${t.id.replaceAll(" ","_")}" width="192" height="64"></canvas>
+
+          <div class="led-row" style="margin-top:8px">
+            <select class="led-sel" data-led="target" data-id="${t.id}">
+              <option value="tower">This tower</option>
+              <option value="region">This region</option>
+              <option value="all">ALL towers</option>
+            </select>
+            <button class="tower-popup-btn" data-action="led_preset" data-preset="SHARK_ATTACK" data-id="${t.id}">🦈 Shark</button>
+            <button class="tower-popup-btn" data-action="led_preset" data-preset="BEACH_CLOSED" data-id="${t.id}"> Closed</button>
+            <button class="tower-popup-btn" data-action="led_preset" data-preset="BEACH_OPEN" data-id="${t.id}"> Open</button>
+            <button class="tower-popup-btn" data-action="led_time" data-id="${t.id}">🕒 Time</button>
+          </div>
+
+          <div class="led-row" style="margin-top:8px">
+            <input class="led-inp" data-led="text" data-id="${t.id}" placeholder="Broadcast text" />
+            <button class="tower-popup-btn primary" data-action="led_text" data-id="${t.id}">Send</button>
+          </div>
+
+          <div style="margin-top:6px;color:#9ca3af;font-size:10px">
+            Backend publishes MQTT in production; this UI calls Node API.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ===== Backend actions =====
+  async function apiToggleOutput(t, idx){
+    const res = await fetch(`/api/towers/${encodeURIComponent(t.id)}/output`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ index: idx })
+    });
+    if (!res.ok) throw new Error("Output toggle failed");
+    const data = await res.json();
+    if (data.tower) upsertTower(data.tower, true);
+    if (data.stats) setStats(data.stats);
+  }
+
+  async function apiLed(t, target, cmd){
+    const res = await fetch(`/api/towers/${encodeURIComponent(t.id)}/led`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ ...cmd, target })
+    });
+    if (!res.ok) throw new Error("LED command failed");
+    const data = await res.json();
+    if (data.stats) setStats(data.stats);
+  }
+
+  async function apiDemoCall(){
+    const res = await fetch("/api/demo/call", {method:"POST", headers:{"Content-Type":"application/json"}});
+    if (!res.ok) throw new Error("Demo call failed");
+  }
+
+  // ===== Upsert + rendering =====
+  function upsertTower(tower, silent=false){
+    const existing = towerById.get(tower.id);
+    if (existing){
+      Object.assign(existing, tower);
+    } else {
+      towers.push(tower);
+      towerById.set(tower.id, tower);
+      if (map) createMarkerForTower(tower);
+    }
+    if (!silent) {
+      updateMarker(tower);
+      if (selected?.id === tower.id) {
+        renderOverlay(tower);
+        selectTower(tower,false,false);
+      }
+      renderList();
+    }
+  }
+
+  function renderChips(){
+    chips.innerHTML="";
+    const mk=(name)=>{
+      const b=document.createElement("button");
+      b.className="chip"+(currentRegion===name?" active":"");
+      b.textContent=name==="ALL"?"All":name;
+      b.onclick=()=>{currentRegion=name; renderChips(); renderList();};
+      chips.appendChild(b);
+    };
+    mk("ALL");
+    regions.forEach(r=>mk(r.name));
+  }
+
+  function renderList(){
+    const q = (search.value||"").toLowerCase();
+    list.innerHTML="";
+    const grouped={};
+
+    for (const t of towers){
+      if (currentRegion!=="ALL" && t.regionName!==currentRegion) continue;
+      if (q && !t.id.toLowerCase().includes(q) && !t.site.toLowerCase().includes(q)) continue;
+      (grouped[t.regionName] ||= []).push(t);
+    }
+
+    const names = Object.keys(grouped).sort();
+    if (!names.length){
+      list.innerHTML = `<div class="meta">No towers match.</div>`;
+      return;
+    }
+
+    for (const rn of names){
+      const g=document.createElement("div");
+      g.className="group"; g.textContent=rn;
+      list.appendChild(g);
+
+      grouped[rn].forEach(t=>{
+        const it=document.createElement("div");
+        it.className="item"+(selected?.id===t.id?" active":"");
+        const alarm = t.inputs[0]===1;
+        const dotClass = alarm ? "dot alarm" : (t.online ? "dot on":"dot off");
+
+        it.innerHTML = `
+          <div>
+            <div style="font-weight:900">${t.id}</div>
+            <div class="meta">${t.site}</div>
+          </div>
+          <div class="${dotClass}"></div>
+        `;
+        it.onclick=()=>{ selectTower(t,true,true); };
+        list.appendChild(it);
+      });
+    }
+  }
+
+  // ===== Map =====
+  function initMap(){
+    map = L.map("map").setView([-25.2744, 133.7751], 4);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: " OpenStreetMap contributors"
+    }).addTo(map);
+
+    towers.forEach(t=>createMarkerForTower(t));
+
+    map.on("popupopen", (e)=>{
+      const el = e.popup.getElement();
+      if (!el) return;
+
+      const header = el.querySelector(".tower-popup-header");
+      const towerId = header ? header.textContent.trim() : "";
+      const t = towerById.get(towerId);
+      if (t) drawPopupLedCanvasIfPresent(t);
+
+      el.querySelectorAll("[data-action='cctv']").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const id=btn.getAttribute("data-id");
+          const tt=towerById.get(id);
+          if (!tt) return;
+          window.open(towerCctvUrl(tt), "_blank", "noopener,noreferrer");
+          addLog("CCTV",`Open CCTV page for ${id}`);
+        });
+      });
+
+      el.querySelectorAll("[data-action='fullscreen']").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const id=btn.getAttribute("data-id");
+          const tt=towerById.get(id);
+          if (!tt) return;
+          openOverlay(tt);
+          addLog("View",`Fullscreen opened for ${id}`);
+        });
+      });
+
+      el.querySelectorAll("[data-action='out']").forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const id=btn.getAttribute("data-id");
+          const out=Number(btn.getAttribute("data-out"));
+          const tt=towerById.get(id);
+          if (!tt) return;
+          try { await apiToggleOutput(tt,out); } catch(e){ alert(e.message); }
+        });
+      });
+
+      const pttBtn = el.querySelector("[data-action='ptt']");
+      if (pttBtn){
+        const id=pttBtn.getAttribute("data-id");
+        const down=(ev)=>{ev.preventDefault(); addLog("PTT",`(Popup) START talking to ${id}`);};
+        const up=(ev)=>{ev.preventDefault(); addLog("PTT",`(Popup) STOP talking to ${id}`);};
+        pttBtn.addEventListener("mousedown",down);
+        pttBtn.addEventListener("mouseup",up);
+        pttBtn.addEventListener("mouseleave",up);
+        pttBtn.addEventListener("touchstart",down,{passive:false});
+        pttBtn.addEventListener("touchend",up,{passive:false});
+        pttBtn.addEventListener("touchcancel",up,{passive:false});
+      }
+
+      function getPopupTarget(id){
+        const sel = el.querySelector(`select[data-led="target"][data-id="${CSS.escape(id)}"]`);
+        return sel ? sel.value : "tower";
+      }
+      function getPopupText(id){
+        const inp = el.querySelector(`input[data-led="text"][data-id="${CSS.escape(id)}"]`);
+        return inp ? inp.value.trim() : "";
+      }
+
+      el.querySelectorAll("[data-action='led_preset']").forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const id = btn.getAttribute("data-id");
+          const preset = btn.getAttribute("data-preset");
+          const tt = towerById.get(id);
+          if (!tt) return;
+
+          const target = getPopupTarget(id);
+          const cmd = preset === "SHARK_ATTACK"
+            ? {mode:"preset", preset, priority:90, durationSec:600, brightness:80}
+            : preset === "BEACH_CLOSED"
+              ? {mode:"preset", preset, priority:60, durationSec:1800, brightness:80}
+              : {mode:"preset", preset, priority:30, durationSec:1800, brightness:70};
+
+          try { await apiLed(tt, target, cmd); } catch(e){ alert(e.message); }
+        });
+      });
+
+      el.querySelectorAll("[data-action='led_time']").forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const id = btn.getAttribute("data-id");
+          const tt = towerById.get(id);
+          if (!tt) return;
+          const target = getPopupTarget(id);
+          try { await apiLed(tt, target, {mode:"time", priority:10, durationSec:0, brightness:60}); } catch(e){ alert(e.message); }
+        });
+      });
+
+      el.querySelectorAll("[data-action='led_text']").forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const id = btn.getAttribute("data-id");
+          const tt = towerById.get(id);
+          if (!tt) return;
+
+          const target = getPopupTarget(id);
+          const msg = getPopupText(id);
+          if (!msg) return alert("Enter broadcast text");
+          try { await apiLed(tt, target, {mode:"text", text:msg.toUpperCase(), priority:40, durationSec:300, brightness:75}); } catch(e){ alert(e.message); }
+        });
+      });
+    });
+  }
+
+  function createMarkerForTower(t){
+    const m = L.circleMarker([t.loc.lat,t.loc.lng], markerStyle(t,false)).addTo(map);
+    markerById.set(t.id, m);
+    m.bindPopup(buildPopupHtml(t), { maxWidth: 460, minWidth: 300, autoPan: true, keepInView: true });
+    m.on("click", ()=>{
+      selectTower(t,false,false);
+      m.setPopupContent(buildPopupHtml(t));
+    });
+  }
+
+  function updateMarker(t){
+    const m = markerById.get(t.id);
+    if (!m) return;
+    m.setStyle(markerStyle(t, selected?.id===t.id));
+    if (m.isPopupOpen()){
+      m.setPopupContent(buildPopupHtml(t));
+      setTimeout(()=>drawPopupLedCanvasIfPresent(t),0);
+    }
+  }
+
+  // ===== Select tower =====
+  function selectTower(t, panTo, openPopup){
+    selected = t;
+    selTitle.textContent = t.id;
+    selSub.textContent = `${t.site}  ${t.ip}  ${t.online ? "Online":"Offline"}`;
+    crumb.textContent = `Australia  ${t.regionName}`;
+    highlightOnMap(t.id);
+    renderList();
+    if (panTo && map) map.setView([t.loc.lat,t.loc.lng], 12, {animate:true});
+
+    if (openPopup){
+      const m = markerById.get(t.id);
+      if (m){
+        m.setPopupContent(buildPopupHtml(t));
+        m.openPopup();
+        setTimeout(()=>drawPopupLedCanvasIfPresent(t), 0);
+      }
+    }
+  }
+
+  function drawPopupLedCanvasIfPresent(t){
+    const canvasId = `ledCanvas_${t.id.replaceAll(" ","_")}`;
+    const c = document.getElementById(canvasId);
+    if (c) drawLedPreview(c, t.led);
+  }
+
+  // ===== Fullscreen overlay =====
+  function openOverlay(t){
+    overlay.classList.add("open");
+    overlay.setAttribute("aria-hidden","false");
+    renderOverlay(t);
+  }
+  function closeOv(){
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden","true");
+    ovFrame.src = "about:blank";
+    pttStop();
+  }
+
+  function renderOverlay(t){
+    if (!t) return;
+    selected = t;
+
+    ovTitle.textContent = t.id;
+    ovSub.textContent = `${t.site}  ${t.ip}`;
+    ovOnline.textContent = t.online ? "ONLINE" : "OFFLINE";
+    ovOnline.style.color = t.online ? "#bbf7d0" : "#9ca3af";
+
+    ovSignal.innerHTML = "";
+    for (let i=1;i<=5;i++){
+      const s=document.createElement("span");
+      s.className="sb"+(i<=t.signal?" on":"");
+      ovSignal.appendChild(s);
+    }
+
+    ovFrame.src = towerCctvUrl(t);
+
+    ovOut1.textContent = t.outputs[0] ? "ON":"OFF";
+    ovOut2.textContent = t.outputs[1] ? "ON":"OFF";
+    ovOut3.textContent = t.outputs[2] ? "ON":"OFF";
+
+    ovIn1.textContent = t.inputs[0] ? "TRIGGERED":"NORMAL";
+    ovIn2.textContent = t.inputs[1] ? "TRIGGERED":"NORMAL";
+    ovIn3.textContent = t.inputs[2] ? "TRIGGERED":"NORMAL";
+
+    ovIn1.className = "v"+(t.inputs[0]?" alarm":"");
+    ovIn2.className = "v"+(t.inputs[1]?" alarm":"");
+    ovIn3.className = "v"+(t.inputs[2]?" alarm":"");
+
+    ovOpenCctv.onclick = ()=>window.open(towerCctvUrl(t),"_blank","noopener,noreferrer");
+    ovT1.onclick = ()=>apiToggleOutput(t,0).catch(err=>alert(err.message));
+    ovT2.onclick = ()=>apiToggleOutput(t,1).catch(err=>alert(err.message));
+    ovT3.onclick = ()=>apiToggleOutput(t,2).catch(err=>alert(err.message));
+
+    drawLedPreview(ovLedCanvas, t.led);
+
+    ovLedShark.onclick = ()=> {
+      const target = ovLedTarget.value;
+      apiLed(t, target, {mode:"preset", preset:"SHARK_ATTACK", priority:90, durationSec:600, brightness:80}).catch(err=>alert(err.message));
+    };
+    ovLedClosed.onclick = ()=> {
+      const target = ovLedTarget.value;
+      apiLed(t, target, {mode:"preset", preset:"BEACH_CLOSED", priority:60, durationSec:1800, brightness:80}).catch(err=>alert(err.message));
+    };
+    ovLedOpen.onclick = ()=> {
+      const target = ovLedTarget.value;
+      apiLed(t, target, {mode:"preset", preset:"BEACH_OPEN", priority:30, durationSec:1800, brightness:70}).catch(err=>alert(err.message));
+    };
+    ovLedTime.onclick = ()=> {
+      const target = ovLedTarget.value;
+      apiLed(t, target, {mode:"time", priority:10, durationSec:0, brightness:60}).catch(err=>alert(err.message));
+    };
+    ovLedSendText.onclick = ()=> {
+      const msg = (ovLedText.value || "").trim();
+      if (!msg) return alert("Enter broadcast text");
+      const target = ovLedTarget.value;
+      apiLed(t, target, {mode:"text", text:msg.toUpperCase(), priority:40, durationSec:300, brightness:75}).catch(err=>alert(err.message));
+      ovLedText.value = "";
+    };
+  }
+
+  // ===== PTT (demo) =====
+  let pttActive=false;
+  function pttStart(){
+    if (!selected) return;
+    if (!selected.online) return alert("Tower offline");
+    if (pttActive) return;
+    pttActive=true;
+    addLog("PTT",`START talking to ${selected.id}`);
+    ovPtt.textContent="🎙 TALKING (release)";
+    fetch(`/api/towers/${encodeURIComponent(selected.id)}/ptt`, {method:"POST"});
+  }
+  function pttStop(){
+    if (!pttActive) return;
+    pttActive=false;
+    addLog("PTT",`STOP talking to ${selected?.id??""}`);
+    ovPtt.textContent="🎙 Press & Hold to Talk";
+  }
+  function wirePTT(){
+    const down=(e)=>{e.preventDefault(); pttStart();};
+    const up=(e)=>{e.preventDefault(); pttStop();};
+    ovPtt.addEventListener("mousedown",down);
+    ovPtt.addEventListener("mouseup",up);
+    ovPtt.addEventListener("mouseleave",up);
+    ovPtt.addEventListener("touchstart",down,{passive:false});
+    ovPtt.addEventListener("touchend",up,{passive:false});
+    ovPtt.addEventListener("touchcancel",up,{passive:false});
+  }
+
+  // ===== Overlay close wiring =====
+  closeOverlay.addEventListener("click", closeOv);
+  overlay.addEventListener("click",(e)=>{ if (e.target===overlay) closeOv(); });
+  window.addEventListener("keydown",(e)=>{ if (e.key==="Escape") closeOv(); });
+
+  // ===== Demo controls =====
+  demoCall.addEventListener("click", ()=>{ apiDemoCall().catch(err=>alert(err.message)); });
+
+  openFsSel.addEventListener("click", ()=>{
+    if (!selected) return alert("Select a tower first");
+    openOverlay(selected);
+  });
+
+  demoGroupClosed.addEventListener("click", ()=>{
+    const anchor = towers.find(t=>t.regionName==="PERTH") || towers[0];
+    if (!anchor) return;
+    apiLed(anchor, "region", {mode:"preset", preset:"BEACH_CLOSED", priority:60, durationSec:120, brightness:80}).catch(err=>alert(err.message));
+  });
+
+  search.addEventListener("input", renderList);
+
+  // ===== WebSocket wiring =====
+  const wsProto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${wsProto}://${location.host}`);
+
+  ws.onmessage = (ev)=>{
+    const msg = JSON.parse(ev.data);
+    if (msg.type === "init"){
+      applyInit(msg.data);
+    } else if (msg.type === "tower_update"){
+      if (msg.tower) upsertTower(msg.tower);
+    } else if (msg.type === "log" && msg.entry){
+      const ts = new Date(msg.entry.ts).toTimeString().slice(0,8);
+      addLog(msg.entry.type, msg.entry.msg);
+      logs[0].ts = ts;
+    } else if (msg.type === "stats"){
+      setStats(msg.stats || {});
+    }
+  };
+
+  ws.onerror = ()=>addLog("System","WebSocket error");
+
+  // ===== Initial load =====
+  async function loadInitial(){
+    const res = await fetch("/api/state");
+    const data = await res.json();
+    applyInit(data);
+  }
+
+  function applyInit(data){
+    if (!data) return;
+    regions = data.regions || regions;
+    towers = (data.towers || []).map(t=>({...t}));
+    towerById.clear();
+    towers.forEach(t=>towerById.set(t.id,t));
+    logs = (data.logs || []).map(l=>({ts:new Date(l.ts).toTimeString().slice(0,8), type:l.type, msg:l.msg})).reverse();
+    logsEl.innerHTML = logs.map(x=>`<div class="log"><span class="t">${x.ts}</span><span class="m">${x.type}: ${x.msg}</span></div>`).join("");
+    setStats(data.stats || {});
+
+    renderChips();
+    renderList();
+    if (!map) initMap();
+    wirePTT();
+
+    const first = towers.find(t=>t.online) || towers[0];
+    if (first) selectTower(first,false,false);
+    addLog("System","Connected to backend. Live MQTT + simulator events will appear here.");
+  }
+
+  // ===== LED redraw tick (keeps TIME fresh) =====
+  setInterval(()=>{
+    if (overlay.classList.contains("open") && selected){
+      drawLedPreview(ovLedCanvas, selected.led);
+    }
+    document.querySelectorAll("canvas[id^='ledCanvas_']").forEach(c=>{
+      const idToken = c.id.replace("ledCanvas_","");
+      const towerId = idToken.replaceAll("_"," ");
+      const t = towerById.get(towerId);
+      if (t) drawLedPreview(c, t.led);
+    });
+  }, 1000);
+
+  // ===== Boot =====
+  loadInitial().catch(err=>{
+    console.error(err);
+    addLog("System","Failed to load state");
+  });
+    </script>
+</body>
+</html>
+    <!-- FULLSCREEN CONTROL OVERLAY -->
+    <div id="overlay" class="overlay" aria-hidden="true">
+        <div class="panel">
+            <div class="bar">
+                <div class="left">
+                    <div id="ovTitle" class="name">Tower</div>
+                    <div id="ovSub" class="sub">Status</div>
+                </div>
+                <button id="closeOverlay" class="close"> Close</button>
+            </div>
+
+            <div class="content">
+                <div class="video">
+                    <div class="videohead">CCTV (Large)</div>
+                    <div class="frame">
+                        <iframe id="ovFrame" src="about:blank" allow="autoplay; fullscreen; microphone"></iframe>
+                    </div>
+                </div>
+
+                <div class="right">
+                    <div class="row"><span>Online</span><strong id="ovOnline"></strong></div>
+                    <div class="row"><span>Signal</span><span id="ovSignal" class="bars2"></span></div>
+
+                    <div class="cta">
+                        <button id="ovOpenCctv" class="ctabtn primary">📺 Open CCTV Page</button>
+                        <button id="ovPtt" class="ctabtn danger">🎙 Press & Hold to Talk</button>
+                    </div>
+
+                    <div class="mini">
+                        <div class="box">
+                            <div class="k">Output 1</div>
+                            <div class="v" id="ovOut1"></div>
+                            <button class="smallbtn" id="ovT1">Toggle</button>
+                        </div>
+                        <div class="box">
+                            <div class="k">Output 2</div>
+                            <div class="v" id="ovOut2"></div>
+                            <button class="smallbtn" id="ovT2">Toggle</button>
+                        </div>
+                        <div class="box">
+                            <div class="k">Output 3</div>
+                            <div class="v" id="ovOut3"></div>
+                            <button class="smallbtn" id="ovT3">Toggle</button>
+                        </div>
+                    </div>
+
+                    <div class="mini">
+                        <div class="box"><div class="k">Input 1 (Call)</div><div class="v" id="ovIn1"></div></div>
+                        <div class="box"><div class="k">Input 2</div><div class="v" id="ovIn2"></div></div>
+                        <div class="box"><div class="k">Input 3</div><div class="v" id="ovIn3"></div></div>
+                    </div>
+
+                    <div class="fs-led">
+                        <h4>LED Matrix (Preview)</h4>
+                        <canvas id="ovLedCanvas" width="192" height="64"></canvas>
+
+                        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+                            <button class="ctabtn" id="ovLedShark">🦈 Shark Attack</button>
+                            <button class="ctabtn" id="ovLedClosed"> Beach Closed</button>
+                            <button class="ctabtn" id="ovLedOpen"> Beach Open</button>
+                            <button class="ctabtn" id="ovLedTime">🕒 Time</button>
+                        </div>
+
+                        <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+                            <input id="ovLedText" placeholder="Broadcast text" style="flex:1;border:1px solid var(--border);background:var(--bg2);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px" />
+                            <select id="ovLedTarget" style="border:1px solid var(--border);background:var(--bg2);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px">
+                                <option value="tower">This tower</option>
+                                <option value="region">This region</option>
+                                <option value="all">ALL towers</option>
+                            </select>
+                            <button class="ctabtn primary" id="ovLedSendText">Send</button>
+                        </div>
+
+                        <div style="margin-top:8px;color:var(--muted2);font-size:11px">
+                            Note: UI posts to Node backend; backend can publish MQTT LED commands.
+                        </div>
+                    </div>
+
+                    <div class="hint">Tip: hold PTT (mouse down / touch start), release to stop.</div>
+                </div>
+            </div>
+        </div>
+    </div>

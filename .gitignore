@@ -1,0 +1,5 @@
+node_modules/
+.ssh/
+npm-debug.log*
+*.log
+.DS_Store
