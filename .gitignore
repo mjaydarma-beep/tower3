@@ -3,3 +3,5 @@ node_modules/
 npm-debug.log*
 *.log
 .DS_Store
+github.pub
+id_ed25519.pub

@@ -49,6 +49,16 @@ Then open http://localhost:3000
 - Calls backend endpoints for outputs, LED (tower/region/all), PTT demo, and demo call
 - Map/popup/overlay stay in sync; LED canvases redraw live
 
+## Raspberry Pi client (MQTT publisher)
+- File: `pi-client.js`
+- Install: `npm install mqtt` (inside repo or copy the file elsewhere and install there)
+- Run (no auth example): `MQTT_URL=mqtt://2.245.63.236 TOWER_ID="PERTH PR1001" node pi-client.js`
+- Topics it sends:
+  - `tower/<id>/event/status` `{ online, signal }`
+  - `tower/<id>/event/io` `{ inputs, outputs }`
+  - `tower/<id>/event/call` `{ input, state }`
+  - (add your own publishes as needed)
+
 ## Notes
 - Simulator is on by default and periodically triggers calls and output toggles so the UI has activity without MQTT.
 - CCTV uses the demo YouTube embed; swap `DEMO_CCTV_EMBED_URL` in `public/index.html` with your stream gateway when ready.
